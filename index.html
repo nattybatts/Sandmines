@@ -68,7 +68,7 @@ html,body{height:100%;background:var(--paper);color:var(--ink);font-family:'Barl
 .ltog.on::after{transform:translateX(11px)}
 
 /* OPERATOR AUTOCOMPLETE */
-#op-suggestions{display:none;position:absolute;left:0;right:0;top:100%;z-index:200;border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;background:white;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)}
+#op-suggestions{display:none;position:fixed;z-index:2000;border:1px solid var(--border);border-radius:4px;background:white;max-height:180px;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .op-item{padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #f0ece4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .op-item:hover{background:var(--paper2)}
 .op-item:last-child{border-bottom:none}
@@ -460,15 +460,24 @@ function populateFilters(){
 
   const opIn=document.getElementById('f-op');
   const opSugg=document.getElementById('op-suggestions');
+  function positionSugg(){
+    const r=opIn.getBoundingClientRect();
+    opSugg.style.left=r.left+'px';
+    opSugg.style.top=(r.bottom+2)+'px';
+    opSugg.style.width=r.width+'px';
+  }
   opIn.addEventListener('input',()=>{
     const q=opIn.value.trim().toLowerCase();
     if(q.length<2){opSugg.style.display='none';if(filterOp){filterOp='';rebuildLayers();}return;}
-    const hits=OPS.filter(o=>o.toLowerCase().includes(q)).slice(0,10);
+    const hits=OPS.filter(o=>o.toLowerCase().includes(q)).slice(0,12);
     if(!hits.length){opSugg.style.display='none';return;}
+    positionSugg();
     opSugg.style.display='block';
-    opSugg.innerHTML=hits.map(o=>`<div class="op-item" onmousedown="pickOp('${o.replace(/'/g,"\\'")}','${o.replace(/'/g,"\\'")}')">${o}</div>`).join('');
+    opSugg.innerHTML=hits.map(o=>{const s=o.replace(/'/g,"\'");return '<div class="op-item" onmousedown="pickOp(\'' + s + '\',\'' + s + '\')">' + o + '</div>';}).join('');
   });
+  opIn.addEventListener('focus',()=>{if(opSugg.children.length)positionSugg();});
   opIn.addEventListener('blur',()=>setTimeout(()=>opSugg.style.display='none',200));
+  window.addEventListener('scroll',()=>{if(opSugg.style.display!=='none')positionSugg();},true);
 }
 
 function pickOp(val,label){
