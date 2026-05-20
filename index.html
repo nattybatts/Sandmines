@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sand Mine Distance Finder — TX & NM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Barlow:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+:root{
+  --ink:#0f0e0d;--paper:#f5f1ea;--paper2:#ebe6db;
+  --rust:#b8421a;--rust-dk:#8c3113;
+  --gold:#c08a1e;--slate:#2c3e50;
+  --green:#1e5c26;
+  --border:#d4cfc5;--muted:#7a756c;
+  --c-active:#2d7a38;--c-duc:#c08a1e;--c-drilled:#2c3e50;
+  --c-permit:#9b3cc4;--c-rig:#b8421a;--c-mine:#1a1a1a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--paper);color:var(--ink);font-family:'Barlow',sans-serif;overflow-x:hidden}
+
+/* HEADER */
+.hdr{background:var(--ink);padding:11px 15px 10px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:1100}
+.logo{font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;color:white;letter-spacing:.05em;text-transform:uppercase;line-height:1}
+.logo span{color:var(--rust)}
+.logo-sub{font-family:'IBM Plex Mono',monospace;font-size:7px;letter-spacing:.12em;text-transform:uppercase;color:#6a6560;margin-top:2px}
+.hdr-right{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:8px;color:#5a544e;letter-spacing:.05em;text-align:right;text-transform:uppercase;line-height:1.7}
+
+/* LAYOUT */
+.app{display:grid;grid-template-columns:350px 1fr;height:calc(100vh - 48px)}
+@media(max-width:680px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto}}
+
+/* PANEL */
+.panel{background:var(--paper);overflow-y:auto;border-right:1px solid var(--border);display:flex;flex-direction:column}
+@media(max-width:680px){.panel{border-right:none;border-bottom:1px solid var(--border);max-height:58vh;overflow-y:auto}}
+.pi{padding:13px;display:flex;flex-direction:column;gap:11px}
+
+/* BLOCKS */
+.blk{background:white;border:1px solid var(--border);border-radius:5px;overflow:hidden}
+.blk-hd{padding:7px 11px;font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:white;display:flex;align-items:center;gap:6px}
+.blk-hd.dark{background:var(--ink)}
+.blk-hd.rust{background:var(--rust)}
+.blk-body{padding:11px}
+
+/* FIELDS */
+.field label{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:3px}
+.field select,.field input[type=number],.field input[type=text]{width:100%;height:36px;border:1.5px solid var(--border);border-radius:4px;padding:0 9px;font-family:'Barlow',sans-serif;font-size:13px;color:var(--ink);background:var(--paper);-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='9' height='5' viewBox='0 0 9 5' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L4.5 4L8 1' stroke='%237a756c' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:24px}
+.field input[type=text]{background-image:none;padding-right:9px}
+.field select:focus,.field input:focus{outline:none;border-color:var(--rust);background:white}
+.fields2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* LAYERS */
+.layers{display:flex;flex-direction:column;gap:5px}
+.lrow{display:flex;align-items:center;gap:9px;padding:6px 9px;border:1px solid var(--border);border-radius:4px;cursor:pointer;user-select:none;transition:background .1s}
+.lrow:hover{background:var(--paper2)}
+.lrow.off{opacity:.4}
+.ldot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.llabel{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;flex:1}
+.lcount{font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--muted);min-width:36px;text-align:right}
+.ltog{width:26px;height:15px;background:var(--border);border-radius:8px;position:relative;transition:background .15s;flex-shrink:0}
+.ltog.on{background:var(--rust)}
+.ltog::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:white;transition:transform .15s}
+.ltog.on::after{transform:translateX(11px)}
+
+/* OPERATOR AUTOCOMPLETE */
+#op-suggestions{display:none;position:absolute;left:0;right:0;top:100%;z-index:200;border:1px solid var(--border);border-top:none;border-radius:0 0 4px 4px;background:white;max-height:150px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.op-item{padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid #f0ece4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.op-item:hover{background:var(--paper2)}
+.op-item:last-child{border-bottom:none}
+.op-wrap{position:relative}
+
+/* DEST + CALC */
+.fields2m{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px}
+.btn-calc{width:100%;height:38px;background:var(--rust);color:white;border:none;border-radius:4px;font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-calc:active{background:var(--rust-dk)}
+.divider{display:flex;align-items:center;gap:7px;margin:7px 0}
+.divider-line{flex:1;height:1px;background:var(--border)}
+.divider-text{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.maphint{background:var(--paper2);border-radius:4px;padding:6px 10px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;line-height:1.4}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:8.5px;padding:4px 7px;border:1px solid var(--border);border-radius:3px;background:white;color:var(--ink);cursor:pointer;white-space:nowrap}
+.chip:active,.chip.on{background:var(--ink);color:white;border-color:var(--ink)}
+
+/* DEST BADGE */
+.dbadge{background:var(--slate);color:white;border-radius:4px;padding:7px 10px;display:none;align-items:center;gap:7px}
+.dbadge.show{display:flex}
+.dcoords{font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.5}
+.dlbl{font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.55;font-family:'IBM Plex Mono',monospace}
+.dclr{margin-left:auto;background:rgba(255,255,255,.15);border:none;color:white;border-radius:3px;padding:3px 7px;font-size:11px;cursor:pointer}
+
+/* STATS */
+.sbar{display:none;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.sbar.show{display:grid}
+.sstat{background:white;padding:8px 6px;text-align:center}
+.snum{font-family:'Oswald',sans-serif;font-size:19px;font-weight:700;color:var(--rust);line-height:1}
+.slbl{font-family:'IBM Plex Mono',monospace;font-size:7px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+
+/* SORT ROW */
+.sort-row{display:flex;align-items:center;gap:7px}
+.sort-row label{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.sort-row select{width:auto;height:27px;font-size:11px;padding:0 20px 0 7px}
+#cnt-lbl{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--muted)}
+
+/* MINE CARDS */
+.mcard{background:white;border:1px solid var(--border);border-radius:4px;padding:9px 11px;cursor:pointer;transition:border-color .12s}
+.mcard:active{border-color:var(--rust)}
+.mtop{display:flex;align-items:flex-start;justify-content:space-between;gap:7px}
+.mname{font-family:'Oswald',sans-serif;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;line-height:1.1}
+.mmeta{font-size:9.5px;color:var(--muted);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.mdist{text-align:right;flex-shrink:0}
+.mdrv{font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;line-height:1}
+.mdrvlbl{font-family:'IBM Plex Mono',monospace;font-size:7.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.msl{font-family:'IBM Plex Mono',monospace;font-size:8px;color:var(--muted)}
+.mbar{height:2px;background:var(--paper2);border-radius:1px;overflow:hidden;margin-top:5px}
+.mbar-fill{height:100%;border-radius:1px}
+.badgerow{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:7px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border-radius:2px}
+.b-near{background:var(--green);color:white}
+.b-frac{background:var(--slate);color:white}
+.b-agg{background:var(--paper2);color:var(--muted)}
+.b-idle{background:#fef3c7;color:#92400e}
+.rlist{display:flex;flex-direction:column;gap:5px}
+.empty{text-align:center;padding:24px 12px;color:var(--muted);font-size:12px;line-height:1.6}
+
+/* MAP */
+.map-wrap{position:relative;background:#e8e0d0}
+@media(max-width:680px){.map-wrap{height:46vw;min-height:210px;max-height:320px}}
+#map{width:100%;height:100%}
+.maplbl{position:absolute;bottom:9px;left:50%;transform:translateX(-50%);background:rgba(15,14,13,.8);color:white;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;border-radius:20px;pointer-events:none;z-index:500;white-space:nowrap}
+
+/* LOADING */
+.loading{position:fixed;inset:0;background:rgba(15,14,13,.75);display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:10px}
+.spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.2);border-top-color:var(--rust);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.load-text{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:white}
+.load-sub{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.06em;color:#8a8480;margin-top:2px}
+#load-bar-wrap{width:180px;height:3px;background:rgba(255,255,255,.15);border-radius:2px;margin-top:4px}
+#load-bar{height:100%;background:var(--rust);border-radius:2px;width:0%;transition:width .2s}
+
+/* Mine & dest icons */
+.mine-mk{width:20px;height:20px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:9px;color:white;font-weight:700}
+.dest-mk{width:20px;height:20px;background:var(--gold);border-radius:50%;border:2.5px solid white;box-shadow:0 2px 5px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;font-size:11px}
+</style>
+</head>
+<body>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div>
+    <div class="load-text" id="load-text">Loading wells…</div>
+    <div class="load-sub" id="load-sub">Fetching data</div>
+  </div>
+  <div id="load-bar-wrap"><div id="load-bar"></div></div>
+</div>
+
+<div class="hdr">
+  <div>
+    <div class="logo">Sand Mine <span>Finder</span></div>
+    <div class="logo-sub">West Texas &amp; New Mexico</div>
+  </div>
+  <div class="hdr-right" id="hdr-counts">Loading…</div>
+</div>
+
+<div class="app">
+  <div class="panel">
+    <div class="pi">
+
+      <!-- FILTERS -->
+      <div class="blk">
+        <div class="blk-hd dark">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Filters
+        </div>
+        <div class="blk-body" style="display:flex;flex-direction:column;gap:9px">
+          <div class="fields2">
+            <div class="field">
+              <label>State</label>
+              <select id="f-state"><option value="">All States</option></select>
+            </div>
+            <div class="field">
+              <label>Operator</label>
+              <div class="op-wrap">
+                <input type="text" id="f-op" placeholder="Search…" autocomplete="off">
+                <div id="op-suggestions"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LAYERS -->
+      <div class="blk">
+        <div class="blk-hd dark">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          Data Layers
+        </div>
+        <div class="blk-body">
+          <div class="layers">
+            <div class="lrow" id="lr-active" onclick="toggleLayer('active')">
+              <div class="ldot" style="background:var(--c-active)"></div>
+              <span class="llabel">Active Wells</span>
+              <span class="lcount" id="lc-active">—</span>
+              <div class="ltog on" id="lt-active"></div>
+            </div>
+            <div class="lrow" id="lr-duc" onclick="toggleLayer('duc')">
+              <div class="ldot" style="background:var(--c-duc)"></div>
+              <span class="llabel">Drilled &amp; DUC</span>
+              <span class="lcount" id="lc-duc">—</span>
+              <div class="ltog on" id="lt-duc"></div>
+            </div>
+            <div class="lrow" id="lr-permit" onclick="toggleLayer('permit')">
+              <div class="ldot" style="background:var(--c-permit)"></div>
+              <span class="llabel">Permits (past year)</span>
+              <span class="lcount" id="lc-permit">—</span>
+              <div class="ltog on" id="lt-permit"></div>
+            </div>
+            <div class="lrow" id="lr-rig" onclick="toggleLayer('rig')">
+              <div class="ldot" style="background:var(--c-rig)"></div>
+              <span class="llabel">Active Rigs</span>
+              <span class="lcount" id="lc-rig">—</span>
+              <div class="ltog on" id="lt-rig"></div>
+            </div>
+            <div class="lrow" id="lr-mine" onclick="toggleLayer('mine')">
+              <div class="ldot" style="background:var(--c-mine)"></div>
+              <span class="llabel">Sand Mines</span>
+              <span class="lcount">51</span>
+              <div class="ltog on" id="lt-mine"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DISTANCE -->
+      <div class="blk">
+        <div class="blk-hd rust">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          Distance to Mines
+        </div>
+        <div class="blk-body">
+          <div class="fields2m">
+            <div class="field"><label>Latitude</label><input type="number" id="lat-in" placeholder="32.0517" step="0.0001"></div>
+            <div class="field"><label>Longitude</label><input type="number" id="lon-in" placeholder="-103.3007" step="0.0001"></div>
+          </div>
+          <button class="btn-calc" onclick="calcFromInput()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            Calculate Distances
+          </button>
+          <div class="divider"><div class="divider-line"></div><span class="divider-text">or</span><div class="divider-line"></div></div>
+          <div class="maphint">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Tap anywhere on the map to set destination
+          </div>
+          <div class="chips">
+            <button class="chip" onclick="usePreset(31.9973,-102.0779,'Midland, TX')">Midland TX</button>
+            <button class="chip" onclick="usePreset(31.8457,-102.3676,'Odessa, TX')">Odessa TX</button>
+            <button class="chip" onclick="usePreset(32.4500,-103.8000,'Hobbs, NM')">Hobbs NM</button>
+            <button class="chip" onclick="usePreset(32.7265,-103.1385,'Eunice, NM')">Eunice NM</button>
+            <button class="chip" onclick="usePreset(31.8529,-102.9868,'Pecos, TX')">Pecos TX</button>
+            <button class="chip" onclick="usePreset(32.0034,-102.1076,'Andrews, TX')">Andrews TX</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEST BADGE + STATS -->
+      <div class="dbadge" id="dbadge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <div><div class="dlbl">Destination set</div><div class="dcoords" id="dcoords">—</div></div>
+        <button class="dclr" onclick="clearDest()">✕</button>
+      </div>
+      <div class="sbar" id="sbar">
+        <div class="sstat"><div class="snum" id="s-near">—</div><div class="slbl">Nearest (mi)</div></div>
+        <div class="sstat"><div class="snum" id="s-100">—</div><div class="slbl">Within 100 mi</div></div>
+        <div class="sstat"><div class="snum" id="s-250">—</div><div class="slbl">Within 250 mi</div></div>
+      </div>
+
+      <!-- MINE RESULTS -->
+      <div>
+        <div class="sort-row" style="margin-bottom:7px">
+          <label>Sort</label>
+          <select id="sort-sel" onchange="renderMines()">
+            <option value="dist">Nearest first</option>
+            <option value="dist-desc">Farthest first</option>
+            <option value="name">Name A–Z</option>
+          </select>
+          <span id="cnt-lbl"></span>
+        </div>
+        <div class="rlist" id="rlist">
+          <div class="empty">📍<br>Tap the map or enter coordinates<br>to see distances from all mines</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="maplbl" id="maplbl">Tap map to set destination</div>
+  </div>
+</div>
+
+<script>
+// ── Mine data (static, no need to reload) ────────────────────────────────────
+const MINES=[
+  {n:1,name:"Alpine Silica – Kermit",op:"Alpine Silica",county:"Winkler",state:"TX",lat:32.052,lon:-103.066,type:"frac",status:"Active"},
+  {n:2,name:"Alpine Silica – Monahans",op:"Alpine Silica",county:"Ward",state:"TX",lat:31.645,lon:-102.760,type:"frac",status:"Active"},
+  {n:3,name:"Alpine Silica – Lamesa",op:"Alpine Silica",county:"Dawson",state:"TX",lat:32.620,lon:-101.993,type:"frac",status:"Active"},
+  {n:4,name:"Atlas – Kermit K1 South",op:"Atlas",county:"Winkler",state:"TX",lat:31.940,lon:-103.020,type:"frac",status:"Active"},
+  {n:5,name:"Atlas – Kermit K2 North",op:"Atlas",county:"Winkler",state:"TX",lat:31.960,lon:-103.010,type:"frac",status:"Active"},
+  {n:6,name:"Atlas – Monahans Mine",op:"Atlas",county:"Ward",state:"TX",lat:31.670,lon:-103.000,type:"frac",status:"Active"},
+  {n:7,name:"Atlas – Monahans Terminal",op:"Atlas",county:"Ward",state:"TX",lat:31.600,lon:-103.082,type:"frac",status:"Active"},
+  {n:8,name:"Atlas – Dune Express Terminal",op:"Atlas",county:"Lea",state:"NM",lat:32.450,lon:-103.450,type:"frac",status:"Active"},
+  {n:9,name:"Black Mountain – Vest Mine",op:"Black Mountain Sand",county:"Winkler",state:"TX",lat:31.880,lon:-103.150,type:"frac",status:"Active"},
+  {n:10,name:"Black Mountain – El Dorado",op:"Black Mountain Sand",county:"Winkler",state:"TX",lat:31.840,lon:-103.200,type:"frac",status:"Active"},
+  {n:11,name:"Capital Sand – Permian Basin",op:"Capital Sand",county:"Ward",state:"TX",lat:31.598,lon:-103.082,type:"frac",status:"Active"},
+  {n:12,name:"Farmer Companies – Monahans",op:"Farmer Companies",county:"Ward",state:"TX",lat:31.610,lon:-103.070,type:"frac",status:"Active"},
+  {n:13,name:"High Roller Sand – 115 Plant",op:"High Roller Sand",county:"Winkler",state:"TX",lat:31.860,lon:-103.180,type:"frac",status:"Active"},
+  {n:14,name:"Wallstreet Sand – Kermit",op:"Wallstreet Sand",county:"Winkler",state:"TX",lat:31.920,lon:-103.030,type:"frac",status:"Active"},
+  {n:15,name:"Vista Minerals – West Texas",op:"Vista Minerals",county:"Winkler",state:"TX",lat:31.750,lon:-103.080,type:"frac",status:"Active"},
+  {n:16,name:"U.S. Silica – Crane County",op:"U.S. Silica",county:"Crane",state:"TX",lat:31.420,lon:-102.360,type:"frac",status:"Active"},
+  {n:17,name:"U.S. Silica – Lamesa",op:"U.S. Silica",county:"Dawson",state:"TX",lat:32.690,lon:-101.880,type:"frac",status:"Active"},
+  {n:18,name:"Independence TX – Tree Dog",op:"Independence TX",county:"Loving",state:"TX",lat:31.840,lon:-103.570,type:"frac",status:"Active"},
+  {n:19,name:"Independence TX – Z&T Ranch",op:"Independence TX",county:"Loving",state:"TX",lat:31.820,lon:-103.580,type:"frac",status:"Active"},
+  {n:20,name:"OnCore 1 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Howard",state:"TX",lat:32.260,lon:-101.350,type:"frac",status:"Active"},
+  {n:21,name:"OnCore 2 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Howard",state:"TX",lat:32.280,lon:-101.360,type:"frac",status:"Idle"},
+  {n:22,name:"OnCore 2B (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Howard",state:"TX",lat:32.560,lon:-101.200,type:"frac",status:"Active"},
+  {n:23,name:"OnCore 3 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Loving",state:"TX",lat:31.850,lon:-103.560,type:"frac",status:"Idle"},
+  {n:24,name:"OnCore 3B (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Loving",state:"TX",lat:31.870,lon:-103.540,type:"frac",status:"Active"},
+  {n:25,name:"OnCore 4 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Martin",state:"TX",lat:32.220,lon:-101.820,type:"frac",status:"Active"},
+  {n:26,name:"OnCore 5 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Midland",state:"TX",lat:32.050,lon:-102.000,type:"frac",status:"Active"},
+  {n:27,name:"OnCore 6 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Glasscock",state:"TX",lat:31.860,lon:-101.510,type:"frac",status:"Active"},
+  {n:28,name:"OnCore 7 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Loving",state:"TX",lat:31.870,lon:-103.550,type:"frac",status:"Active"},
+  {n:29,name:"OnCore 8 (Hi-Crush/Atlas)",op:"Hi-Crush / Atlas",county:"Midland",state:"TX",lat:32.060,lon:-101.980,type:"frac",status:"Active"},
+  {n:30,name:"Nomad Proppant – Big Spring",op:"Nomad Proppant",county:"Howard",state:"TX",lat:32.250,lon:-101.480,type:"frac",status:"Active"},
+  {n:31,name:"West Point Silica",op:"West Point Silica",county:"Howard",state:"TX",lat:32.240,lon:-101.370,type:"frac",status:"Active"},
+  {n:32,name:"Nomad Proppant – Midland",op:"Nomad Proppant",county:"Midland",state:"TX",lat:31.990,lon:-102.080,type:"frac",status:"Active"},
+  {n:33,name:"PB Materials – Odessa",op:"PB Materials",county:"Ector",state:"TX",lat:31.860,lon:-102.370,type:"aggregate",status:"Active"},
+  {n:34,name:"PB Materials – Fort Stockton",op:"PB Materials",county:"Pecos",state:"TX",lat:30.890,lon:-102.880,type:"aggregate",status:"Active"},
+  {n:35,name:"Farmington Sand & Gravel",op:"Farmington Sand & Gravel",county:"San Juan",state:"NM",lat:36.728,lon:-108.210,type:"aggregate",status:"Active"},
+  {n:36,name:"Four Corners Materials",op:"Four Corners Materials",county:"San Juan",state:"NM",lat:36.740,lon:-108.180,type:"aggregate",status:"Active"},
+  {n:37,name:"Nielsons – San Juan Pit",op:"Nielsons Inc.",county:"San Juan",state:"NM",lat:36.755,lon:-108.090,type:"aggregate",status:"Active"},
+  {n:38,name:"Gallup Sand & Gravel",op:"Gallup Sand & Gravel",county:"McKinley",state:"NM",lat:35.528,lon:-108.743,type:"aggregate",status:"Active"},
+  {n:39,name:"Albuquerque Rock / LaFarge",op:"LaFarge / Western Mobile",county:"Bernalillo",state:"NM",lat:35.050,lon:-106.680,type:"aggregate",status:"Active"},
+  {n:40,name:"Espanola Transit Mix",op:"Espanola Transit Mix",county:"Rio Arriba",state:"NM",lat:36.000,lon:-106.080,type:"aggregate",status:"Active"},
+  {n:41,name:"Belen Sand & Gravel",op:"Belen Sand & Gravel",county:"Valencia",state:"NM",lat:34.661,lon:-106.774,type:"aggregate",status:"Active"},
+  {n:42,name:"Ribble Contracting",op:"Ribble Contracting",county:"Lincoln",state:"NM",lat:33.350,lon:-105.620,type:"aggregate",status:"Active"},
+  {n:43,name:"Armstrong Construction – Lea Co.",op:"Armstrong Construction",county:"Lea",state:"NM",lat:32.700,lon:-103.200,type:"aggregate",status:"Active"},
+  {n:44,name:"Concrete Inc. / Caprock – Hobbs",op:"Concrete Inc. / Caprock",county:"Lea",state:"NM",lat:32.720,lon:-103.150,type:"aggregate",status:"Active"},
+  {n:45,name:"Bonnell Sand & Gravel",op:"Bonnell Enterprises",county:"Chaves",state:"NM",lat:33.394,lon:-104.523,type:"aggregate",status:"Active"},
+  {n:46,name:"C&E Concrete Sand Pit",op:"C&E Concrete",county:"Chaves",state:"NM",lat:33.380,lon:-104.530,type:"aggregate",status:"Active"},
+  {n:47,name:"Duran Sand & Gravel",op:"Duran Sand & Gravel",county:"Torrance",state:"NM",lat:34.400,lon:-105.980,type:"aggregate",status:"Active"},
+  {n:48,name:"Southwest Silica Flux Co.",op:"Southwest Silica Flux",county:"Doña Ana",state:"NM",lat:32.340,lon:-106.760,type:"silica",status:"Active"},
+  {n:49,name:"Chino Mines / Freeport",op:"Chino / Freeport",county:"Grant",state:"NM",lat:32.750,lon:-108.040,type:"aggregate",status:"Active"},
+  {n:50,name:"Rio Grande Rock / Sand Co.",op:"Rio Grande Rock",county:"Valencia",state:"NM",lat:34.900,lon:-106.720,type:"aggregate",status:"Active"},
+  {n:51,name:"K. Barnett & Sons – Curry Co.",op:"K. Barnett & Sons",county:"Curry",state:"NM",lat:34.430,lon:-103.200,type:"aggregate",status:"Active"},
+];
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const I={STATUS:0,OP:1,STATE:2,COUNTY:3,BASIN:4,FORM:5,LAT:6,LON:7,NAME:8,EXTRA:9};
+const COLORS={A:'#2d7a38',D:'#2c3e50',U:'#c08a1e',P:'#9b3cc4',R:'#b8421a'};
+const SIZES={A:7,D:6,U:7,P:6,R:10};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let DATA=[],OPS=[],STATES_LIST=[];
+let destLat=null,destLon=null,mineResults=[];
+let destMarker=null;
+let layerVis={active:true,duc:true,permit:true,rig:true,mine:true};
+let filterState='',filterOp='';
+let clusterGroups={};
+const mineLayer=L.layerGroup();
+
+// ── Haversine ─────────────────────────────────────────────────────────────────
+function hav(lat1,lon1,lat2,lon2){
+  const R=3958.8,r=Math.PI/180;
+  const a=Math.sin(((lat2-lat1)*r)/2)**2+Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(((lon2-lon1)*r)/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map=L.map('map',{zoomControl:true,attributionControl:false}).setView([32.0,-102.5],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+map.on('click',e=>setDest(e.latlng.lat,e.latlng.lng,null));
+
+function dotIcon(color,size){
+  return L.divIcon({className:'',html:`<div style="background:${color};width:${size}px;height:${size}px;border-radius:50%;border:1.5px solid white;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>`,iconSize:[size,size],iconAnchor:[size/2,size/2]});
+}
+function mineIconFn(m){
+  const c=m.type==='frac'?'#1a1a1a':'#555';
+  return L.divIcon({className:'',html:`<div class="mine-mk" style="background:${c}">⛏</div>`,iconSize:[20,20],iconAnchor:[10,10]});
+}
+function destIconFn(){
+  return L.divIcon({className:'',html:`<div class="dest-mk">📍</div>`,iconSize:[20,20],iconAnchor:[10,10]});
+}
+
+function makeCluster(color){
+  return L.markerClusterGroup({
+    maxClusterRadius:40,
+    chunkedLoading:true,
+    iconCreateFunction(cluster){
+      const n=cluster.getChildCount();
+      const sz=n>500?34:n>100?28:n>20?22:17;
+      return L.divIcon({html:`<div style="background:${color};width:${sz}px;height:${sz}px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:${sz>22?10:8}px;font-weight:700;color:white">${n>999?Math.round(n/1000)+'k':n}</div>`,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2]});
+    }
+  });
+}
+
+// ── Fetch data files ──────────────────────────────────────────────────────────
+async function loadData(){
+  const lb=document.getElementById('load-bar');
+  const lt=document.getElementById('load-text');
+  const ls=document.getElementById('load-sub');
+
+  try {
+    // Load meta first (fast — has ops + states)
+    lt.textContent='Loading metadata…'; lb.style.width='10%';
+    const meta=await fetch('data/meta.json').then(r=>r.json());
+    OPS=meta.ops; STATES_LIST=meta.states;
+    populateFilters();
+    lb.style.width='20%';
+
+    // Load wells
+    lt.textContent='Loading wells…'; ls.textContent='30,417 records';
+    const wells=await fetch('data/wells.json').then(r=>r.json());
+    lb.style.width='55%';
+
+    // Load permits
+    lt.textContent='Loading permits…'; ls.textContent='13,345 records';
+    const permits=await fetch('data/permits.json').then(r=>r.json());
+    lb.style.width='75%';
+
+    // Load rigs
+    lt.textContent='Loading rigs…'; ls.textContent='615 records';
+    const rigs=await fetch('data/rigs.json').then(r=>r.json());
+    lb.style.width='90%';
+
+    DATA=[...wells,...permits,...rigs];
+    document.getElementById('hdr-counts').textContent=`${DATA.length.toLocaleString()} datapoints`;
+
+    lt.textContent='Building map…'; ls.textContent='Placing markers';
+    await buildLayers();
+    lb.style.width='100%';
+    setTimeout(()=>document.getElementById('loading').style.display='none',300);
+
+  } catch(err){
+    document.getElementById('load-text').textContent='Error loading data';
+    document.getElementById('load-sub').textContent=err.message;
+    console.error(err);
+  }
+}
+
+// ── Populate filter dropdowns ─────────────────────────────────────────────────
+function populateFilters(){
+  const sel=document.getElementById('f-state');
+  STATES_LIST.forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);});
+  sel.addEventListener('change',()=>{filterState=sel.value;rebuildLayers();});
+
+  const opIn=document.getElementById('f-op');
+  const opSugg=document.getElementById('op-suggestions');
+  opIn.addEventListener('input',()=>{
+    const q=opIn.value.trim().toLowerCase();
+    if(q.length<2){opSugg.style.display='none';if(filterOp){filterOp='';rebuildLayers();}return;}
+    const hits=OPS.filter(o=>o.toLowerCase().includes(q)).slice(0,10);
+    if(!hits.length){opSugg.style.display='none';return;}
+    opSugg.style.display='block';
+    opSugg.innerHTML=hits.map(o=>`<div class="op-item" onmousedown="pickOp('${o.replace(/'/g,"\\'")}','${o.replace(/'/g,"\\'")}')">${o}</div>`).join('');
+  });
+  opIn.addEventListener('blur',()=>setTimeout(()=>opSugg.style.display='none',200));
+}
+
+function pickOp(val,label){
+  document.getElementById('f-op').value=label;
+  document.getElementById('op-suggestions').style.display='none';
+  filterOp=val; rebuildLayers();
+}
+
+// ── Build layer clusters ───────────────────────────────────────────────────────
+async function buildLayers(){
+  clusterGroups={
+    active:  makeCluster(COLORS.A),
+    duc:     makeCluster(COLORS.D),
+    permit:  makeCluster(COLORS.P),
+    rig:     makeCluster(COLORS.R),
+  };
+
+  // Add mines (no clustering, only 51)
+  MINES.forEach(m=>{
+    L.marker([m.lat,m.lon],{icon:mineIconFn(m)})
+      .bindPopup(`<b>${m.name}</b><br>${m.county} Co., ${m.state}<br>${m.type} · ${m.status}`)
+      .addTo(mineLayer);
+  });
+  mineLayer.addTo(map);
+
+  // Place all data markers via chunked async
+  await new Promise(resolve=>{
+    let i=0; const CHUNK=1500;
+    const counts={A:0,duc:0,P:0,R:0};
+    function next(){
+      const end=Math.min(i+CHUNK,DATA.length);
+      for(;i<end;i++) addPoint(DATA[i],counts);
+      if(i<DATA.length) setTimeout(next,0);
+      else {
+        updateCounts(counts);
+        Object.entries(clusterGroups).forEach(([k,g])=>{ if(layerVis[k]) g.addTo(map); });
+        resolve();
+      }
+    }
+    next();
+  });
+}
+
+function addPoint(d, counts){
+  const st=d[I.STATUS],lat=d[I.LAT],lon=d[I.LON];
+  if(!lat||!lon) return;
+  const popup=buildPopup(d);
+  const color=COLORS[st]||'#666';
+  const sz=SIZES[st]||6;
+  const mk=L.marker([lat,lon],{icon:dotIcon(color,sz)}).bindPopup(popup);
+  if(st==='A'){clusterGroups.active.addLayer(mk);counts.A++;}
+  else if(st==='D'||st==='U'){clusterGroups.duc.addLayer(mk);counts.duc++;}
+  else if(st==='P'){clusterGroups.permit.addLayer(mk);counts.P++;}
+  else if(st==='R'){clusterGroups.rig.addLayer(mk);counts.R++;}
+}
+
+function buildPopup(d){
+  const st=d[I.STATUS];
+  let h=`<b>${d[I.NAME]||d[I.OP]}</b><br>${d[I.OP]}<br>${d[I.COUNTY]}, ${d[I.STATE]}`;
+  if(d[I.FORM]) h+=`<br>${d[I.FORM]}`;
+  if(st==='R') h+=`<br><i>Contractor: ${d[I.EXTRA]}</i>`;
+  else if(st==='P') h+=`<br>Filed: ${d[I.EXTRA]}`;
+  else h+=`<br>Spud: ${d[I.EXTRA]}`;
+  return h;
+}
+
+function updateCounts(c){
+  document.getElementById('lc-active').textContent=c.A.toLocaleString();
+  document.getElementById('lc-duc').textContent=c.duc.toLocaleString();
+  document.getElementById('lc-permit').textContent=c.P.toLocaleString();
+  document.getElementById('lc-rig').textContent=c.R.toLocaleString();
+}
+
+// ── Rebuild after filter change ───────────────────────────────────────────────
+function rebuildLayers(){
+  Object.values(clusterGroups).forEach(g=>{g.clearLayers();map.removeLayer(g);});
+  const counts={A:0,duc:0,P:0,R:0};
+  for(const d of DATA){
+    if(filterState && d[I.STATE]!==filterState) continue;
+    if(filterOp && d[I.OP]!==filterOp) continue;
+    addPoint(d,counts);
+  }
+  updateCounts(counts);
+  Object.entries(clusterGroups).forEach(([k,g])=>{ if(layerVis[k]) g.addTo(map); });
+}
+
+// ── Layer toggles ─────────────────────────────────────────────────────────────
+function toggleLayer(key){
+  layerVis[key]=!layerVis[key];
+  document.getElementById('lt-'+key).classList.toggle('on',layerVis[key]);
+  document.getElementById('lr-'+key).classList.toggle('off',!layerVis[key]);
+  if(key==='mine'){layerVis.mine ? mineLayer.addTo(map) : map.removeLayer(mineLayer); return;}
+  layerVis[key] ? clusterGroups[key].addTo(map) : map.removeLayer(clusterGroups[key]);
+}
+
+// ── Distance tool ─────────────────────────────────────────────────────────────
+function setDest(lat,lon,label){
+  destLat=lat; destLon=lon;
+  document.getElementById('lat-in').value=lat.toFixed(4);
+  document.getElementById('lon-in').value=lon.toFixed(4);
+  document.getElementById('dbadge').classList.add('show');
+  document.getElementById('dcoords').textContent=(label?label+'\n':'')+lat.toFixed(4)+', '+lon.toFixed(4);
+  if(destMarker) map.removeLayer(destMarker);
+  destMarker=L.marker([lat,lon],{icon:destIconFn(),zIndexOffset:2000}).addTo(map);
+  document.getElementById('maplbl').textContent='Destination set — tap to move';
+  calcMines();
+}
+
+function calcFromInput(){
+  const lat=parseFloat(document.getElementById('lat-in').value);
+  const lon=parseFloat(document.getElementById('lon-in').value);
+  if(isNaN(lat)||isNaN(lon)||lat<-90||lat>90||lon<-180||lon>180){alert('Enter valid coordinates.');return;}
+  setDest(lat,lon,null); map.setView([lat,lon],9);
+}
+
+function clearDest(){
+  destLat=null; destLon=null; mineResults=[];
+  document.getElementById('dbadge').classList.remove('show');
+  document.getElementById('sbar').classList.remove('show');
+  document.getElementById('lat-in').value='';
+  document.getElementById('lon-in').value='';
+  document.getElementById('rlist').innerHTML='<div class="empty">📍<br>Tap the map or enter coordinates<br>to see distances from all mines</div>';
+  document.getElementById('cnt-lbl').textContent='';
+  if(destMarker){map.removeLayer(destMarker);destMarker=null;}
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  document.getElementById('maplbl').textContent='Tap map to set destination';
+}
+
+function usePreset(lat,lon,label){
+  document.querySelectorAll('.chip').forEach(c=>c.classList.remove('on'));
+  event.target.classList.add('on');
+  setDest(lat,lon,label); map.setView([lat,lon],9);
+}
+
+function calcMines(){
+  if(destLat===null) return;
+  mineResults=MINES.map(m=>({...m,sl:Math.round(hav(destLat,destLon,m.lat,m.lon)*10)/10,drive:Math.round(hav(destLat,destLon,m.lat,m.lon)*1.35*10)/10}));
+  const drives=mineResults.map(r=>r.drive);
+  document.getElementById('s-near').textContent=Math.round(Math.min(...drives));
+  document.getElementById('s-100').textContent=mineResults.filter(r=>r.drive<=100).length;
+  document.getElementById('s-250').textContent=mineResults.filter(r=>r.drive<=250).length;
+  document.getElementById('sbar').classList.add('show');
+  renderMines();
+}
+
+function renderMines(){
+  if(!mineResults.length) return;
+  const sort=document.getElementById('sort-sel').value;
+  let d=[...mineResults];
+  if(sort==='dist') d.sort((a,b)=>a.drive-b.drive);
+  else if(sort==='dist-desc') d.sort((a,b)=>b.drive-a.drive);
+  else d.sort((a,b)=>a.name.localeCompare(b.name));
+  const maxD=Math.max(...d.map(x=>x.drive));
+  const nearest=d.reduce((a,b)=>a.drive<b.drive?a:b);
+  document.getElementById('cnt-lbl').textContent=`${d.length} mines`;
+  document.getElementById('rlist').innerHTML=d.map(m=>{
+    const pct=Math.round((m.drive/maxD)*100);
+    const bc=m.drive<50?'var(--green)':m.drive<150?'var(--gold)':'#aaa';
+    return `<div class="mcard" onclick="focusMine(${m.n})">
+      <div class="mtop">
+        <div><div class="mname">${m.name}</div><div class="mmeta">${m.county} Co., ${m.state} · ${m.op}</div></div>
+        <div class="mdist"><div class="mdrv">${m.drive}</div><div class="mdrvlbl">mi drive</div><div class="msl">${m.sl} straight</div></div>
+      </div>
+      <div class="mbar"><div class="mbar-fill" style="width:${pct}%;background:${bc}"></div></div>
+      <div class="badgerow">
+        ${m.n===nearest.n?'<span class="badge b-near">Nearest</span>':''}
+        ${m.type==='frac'?'<span class="badge b-frac">Frac Sand</span>':'<span class="badge b-agg">Aggregate</span>'}
+        ${m.status==='Idle'?'<span class="badge b-idle">Idle</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function focusMine(n){
+  const m=MINES.find(x=>x.n===n);
+  if(m) map.setView([m.lat,m.lon],11);
+}
+
+document.getElementById('lat-in').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('lon-in').focus();});
+document.getElementById('lon-in').addEventListener('keydown',e=>{if(e.key==='Enter')calcFromInput();});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.addEventListener('load', loadData);
+</script>
+</body>
+</html>
